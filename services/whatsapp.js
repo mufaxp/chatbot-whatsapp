@@ -6,11 +6,16 @@ async function sendMessage(target, message) {
 
     try {
 
-        await axios.post(
+        console.log('====================');
+        console.log('MENGIRIM PESAN');
+        console.log('TARGET:', target);
+        console.log('MESSAGE:', message);
+
+        const response = await axios.post(
             'https://api.fonnte.com/send',
             {
-                target,
-                message
+                target: target,
+                message: message
             },
             {
                 headers: {
@@ -19,11 +24,18 @@ async function sendMessage(target, message) {
             }
         );
 
-        console.log('Pesan terkirim');
+        console.log('RESPON FONNTE:');
+        console.log(response.data);
 
     } catch (error) {
 
-        console.log(error.response?.data || error.message);
+        console.log('ERROR FONNTE');
+
+        if (error.response) {
+            console.log(error.response.data);
+        } else {
+            console.log(error.message);
+        }
 
     }
 
