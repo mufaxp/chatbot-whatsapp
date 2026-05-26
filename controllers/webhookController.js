@@ -8,7 +8,25 @@ const categories = {
     '3': 'Server Ujian'
 };
 
-// cek apakah nomor adalah operator
+// ======================
+// MENU UTAMA
+// ======================
+
+function mainMenu() {
+
+    return (
+        `Selamat datang di layanan pengaduan.\n\n` +
+        `1. Jaringan Internet\n` +
+        `2. Kendala LMS\n` +
+        `3. Server Ujian\n\n` +
+        `Silakan pilih layanan.`
+    );
+}
+
+// ======================
+// CEK OPERATOR
+// ======================
+
 async function isOperator(number) {
 
     const [rows] = await pool.query(
@@ -19,67 +37,135 @@ async function isOperator(number) {
     return rows.length > 0;
 }
 
-// handle balasan operator
-async function handleOperatorReply(sender, message) {
+// ======================
+// CEK OPERATOR PUNYA TIKET AKTIF
+// ======================
 
-    // format:
-    // #SELESAI TCK-xxx
-    // isi laporan
+async function operatorHasActiveTicket(operatorNumber) {
+
+    const [rows] = await pool.query(
+        `SELECT * FROM tickets
+        WHERE operator_number = ?
+        AND status = 'PROCESS'
+        LIMIT 1`,
+        [operatorNumber]
+    );
+
+    return rows.length > 0;
+}
+
+// ======================
+// KIRIM TIKET BERIKUTNYA
+// ======================
+
+async function dispatchNextTicket(operatorNumber) {
+
+    // cari tiket waiting paling lama
+    const [ticketRows] = await pool.query(
+        `SELECT * FROM tickets
+        WHERE operator_number = ?
+        AND status = 'WAITING'
+        ORDER BY created_at ASC
+        LIMIT 1`,
+        [operatorNumber]
+    );
+
+    // jika tidak ada antrean
+    if (ticketRows.length === 0) {
+        return;
+    }
+
+    const ticket = ticketRows[0];
+
+    // update jadi PROCESS
+    await pool.query(
+        `UPDATE tickets
+        SET status = 'PROCESS'
+        WHERE id = ?`,
+        [ticket.id]
+    );
+
+    // kirim ke operator
+    await sendMessage(
+        operatorNumber,
+        `TIKET AKTIF\n\n` +
+        `Nomor Antrean: ${ticket.queue_number}\n` +
+        `Kategori: ${ticket.category}\n` +
+        `User: ${ticket.sender}\n\n` +
+        `Keluhan:\n${ticket.complaint}`
+    );
+
+    // info ke user
+    await sendMessage(
+        ticket.sender,
+        `Operator sedang menyelesaikan kendala Anda.\n\n` +
+        `Nomor antrean: ${ticket.queue_number}`
+    );
+}
+
+// ======================
+// HANDLE OPERATOR SELESAI
+// ======================
+
+async function handleOperatorDone(sender, message) {
 
     if (!message.startsWith('#SELESAI')) {
         return;
     }
 
-    const lines = message.split('\n');
-
-    const firstLine = lines[0];
-
-    const ticketNumber =
-        firstLine.replace('#SELESAI', '').trim();
-
     const report =
-        lines.slice(1).join('\n');
+        message.replace('#SELESAI', '').trim();
 
-    // cari tiket
+    // cari tiket PROCESS milik operator
     const [ticketRows] = await pool.query(
-        'SELECT * FROM tickets WHERE ticket_number = ?',
-        [ticketNumber]
+        `SELECT * FROM tickets
+        WHERE operator_number = ?
+        AND status = 'PROCESS'
+        LIMIT 1`,
+        [sender]
     );
 
-    // jika tiket tidak ditemukan
+    // jika tidak ada tiket aktif
     if (ticketRows.length === 0) {
 
         return sendMessage(
             sender,
-            'Ticket tidak ditemukan.'
+            'Tidak ada tiket aktif.'
         );
     }
 
     const ticket = ticketRows[0];
 
-    // update status tiket
+    // update DONE
     await pool.query(
-        'UPDATE tickets SET status = ? WHERE ticket_number = ?',
-        ['DONE', ticketNumber]
+        `UPDATE tickets
+        SET status = 'DONE'
+        WHERE id = ?`,
+        [ticket.id]
     );
 
-    // kirim hasil ke user
+    // kirim laporan ke user
     await sendMessage(
         ticket.sender,
-        `Laporan tiket selesai.\n\n` +
-        `No Tiket: ${ticketNumber}\n\n` +
+        `Laporan kendala selesai.\n\n` +
         `${report}\n\n` +
         `Status: DONE`
     );
 
-    // konfirmasi ke operator
+    // konfirmasi operator
     await sendMessage(
         sender,
-        `Tiket ${ticketNumber} berhasil diselesaikan.`
+        `Tiket antrean ${ticket.queue_number} selesai.`
     );
+
+    // kirim tiket berikutnya
+    await dispatchNextTicket(sender);
 }
 
-// webhook utama
+// ======================
+// WEBHOOK UTAMA
+// ======================
+
 async function webhook(req, res) {
 
     try {
@@ -96,22 +182,24 @@ async function webhook(req, res) {
         console.log('SENDER:', sender);
         console.log('MESSAGE:', message);
 
-        // validasi basic
+        // validasi
         if (!sender || !message) {
             return;
         }
 
-        // cek apakah operator
+        // ======================
+        // MODE OPERATOR
+        // ======================
+
         const operatorCheck =
             await isOperator(sender);
 
-        // hanya proses command operator
         if (
             operatorCheck &&
             message.startsWith('#SELESAI')
         ) {
 
-            await handleOperatorReply(
+            await handleOperatorDone(
                 sender,
                 message
             );
@@ -119,46 +207,62 @@ async function webhook(req, res) {
             return;
         }
 
-        // cek session user
+        // ======================
+        // MODE USER
+        // ======================
+
+        // cek session
         const [sessionRows] = await pool.query(
             'SELECT * FROM sessions WHERE sender = ?',
             [sender]
         );
 
-        // jika belum ada session
+        // ======================
+        // BELUM ADA SESSION
+        // ======================
+
         if (sessionRows.length === 0) {
 
             await pool.query(
-                'INSERT INTO sessions (sender, step) VALUES (?, ?)',
+                `INSERT INTO sessions
+                (sender, step)
+                VALUES (?, ?)`,
                 [sender, 'choose_category']
             );
 
             return sendMessage(
                 sender,
-                `Selamat datang di layanan pengaduan.\n\n` +
-                `1. Jaringan Internet\n` +
-                `2. Kendala LMS\n` +
-                `3. Server Ujian\n\n` +
-                `Silakan pilih layanan.`
+                mainMenu()
             );
         }
 
         const session = sessionRows[0];
 
-        // step pilih kategori
+        // ======================
+        // PILIH KATEGORI
+        // ======================
+
         if (session.step === 'choose_category') {
 
+            // jika pilihan tidak valid
             if (!categories[message]) {
 
                 return sendMessage(
                     sender,
-                    'Pilihan tidak valid.\nSilakan pilih 1, 2, atau 3.'
+                    `Pilihan tidak valid.\n\n${mainMenu()}`
                 );
             }
 
+            // update session
             await pool.query(
-                'UPDATE sessions SET step = ?, category = ? WHERE sender = ?',
-                ['waiting_complaint', message, sender]
+                `UPDATE sessions
+                SET step = ?, category = ?
+                WHERE sender = ?`,
+                [
+                    'waiting_complaint',
+                    message,
+                    sender
+                ]
             );
 
             return sendMessage(
@@ -168,22 +272,24 @@ async function webhook(req, res) {
             );
         }
 
-        // step menunggu keluhan
-        if (session.step === 'waiting_complaint') {
+        // ======================
+        // MENUNGGU KELUHAN
+        // ======================
 
-            const ticketNumber =
-                'TCK-' + Date.now();
+        if (session.step === 'waiting_complaint') {
 
             const categoryName =
                 categories[session.category];
 
-            // cari operator sesuai kategori
+            // cari operator
             const [operatorRows] = await pool.query(
-                'SELECT * FROM operators WHERE category_code = ? LIMIT 1',
+                `SELECT * FROM operators
+                WHERE category_code = ?
+                LIMIT 1`,
                 [session.category]
             );
 
-            // jika operator tidak ditemukan
+            // operator tidak tersedia
             if (operatorRows.length === 0) {
 
                 return sendMessage(
@@ -194,42 +300,47 @@ async function webhook(req, res) {
 
             const operator = operatorRows[0];
 
+            // hitung antrean
+            const [queueRows] = await pool.query(
+                `SELECT COUNT(*) as total
+                FROM tickets
+                WHERE operator_number = ?
+                AND status IN ('WAITING', 'PROCESS')`,
+                [operator.operator_number]
+            );
+
+            const queueNumber =
+                queueRows[0].total + 1;
+
             // simpan tiket
             await pool.query(
                 `INSERT INTO tickets
                 (
                     ticket_number,
+                    queue_number,
                     sender,
                     category,
                     complaint,
-                    operator_number
+                    operator_number,
+                    status
                 )
-                VALUES (?, ?, ?, ?, ?)`,
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
-                    ticketNumber,
+                    'TCK-' + Date.now(),
+                    queueNumber,
                     sender,
                     categoryName,
                     message,
-                    operator.operator_number
+                    operator.operator_number,
+                    'WAITING'
                 ]
             );
 
-            // kirim tiket ke operator
-            await sendMessage(
-                operator.operator_number,
-                `TIKET BARU\n\n` +
-                `No Tiket: ${ticketNumber}\n` +
-                `Kategori: ${categoryName}\n` +
-                `User: ${sender}\n\n` +
-                `Keluhan:\n${message}`
-            );
-
-            // balas ke user
+            // info ke user
             await sendMessage(
                 sender,
                 `Keluhan Anda sudah diterima.\n\n` +
-                `No Tiket: ${ticketNumber}\n` +
-                `Kategori: ${categoryName}\n\n` +
+                `Nomor antrean Anda: ${queueNumber}\n\n` +
                 `Mohon tunggu operator kami.`
             );
 
@@ -238,6 +349,20 @@ async function webhook(req, res) {
                 'DELETE FROM sessions WHERE sender = ?',
                 [sender]
             );
+
+            // cek operator sedang sibuk atau tidak
+            const busy =
+                await operatorHasActiveTicket(
+                    operator.operator_number
+                );
+
+            // jika operator kosong
+            if (!busy) {
+
+                await dispatchNextTicket(
+                    operator.operator_number
+                );
+            }
 
             return;
         }
