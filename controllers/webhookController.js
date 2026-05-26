@@ -1,6 +1,9 @@
 const pool = require('../database/connection');
 
-const { sendMessage } = require('../services/whatsapp');
+const {
+    sendMessage,
+    sendMessageWithDelay
+} = require('../services/whatsapp');
 
 const categories = {
     '1': 'Jaringan Internet',
@@ -85,8 +88,8 @@ async function dispatchNextTicket(operatorNumber) {
         [ticket.id]
     );
 
-    // kirim ke operator
-    await sendMessage(
+    // kirim tiket ke operator
+    await sendMessageWithDelay(
         operatorNumber,
         `TIKET AKTIF\n\n` +
         `Nomor Antrean: ${ticket.queue_number}\n` +
@@ -96,7 +99,7 @@ async function dispatchNextTicket(operatorNumber) {
     );
 
     // info ke user
-    await sendMessage(
+    await sendMessageWithDelay(
         ticket.sender,
         `Operator sedang menyelesaikan kendala Anda.\n\n` +
         `Nomor antrean: ${ticket.queue_number}`
@@ -128,7 +131,7 @@ async function handleOperatorDone(sender, message) {
     // jika tidak ada tiket aktif
     if (ticketRows.length === 0) {
 
-        return sendMessage(
+        return sendMessageWithDelay(
             sender,
             'Tidak ada tiket aktif.'
         );
@@ -145,7 +148,7 @@ async function handleOperatorDone(sender, message) {
     );
 
     // kirim laporan ke user
-    await sendMessage(
+    await sendMessageWithDelay(
         ticket.sender,
         `Laporan kendala selesai.\n\n` +
         `${report}\n\n` +
@@ -153,7 +156,7 @@ async function handleOperatorDone(sender, message) {
     );
 
     // konfirmasi operator
-    await sendMessage(
+    await sendMessageWithDelay(
         sender,
         `Tiket antrean ${ticket.queue_number} selesai.`
     );
@@ -230,7 +233,7 @@ async function webhook(req, res) {
                 [sender, 'choose_category']
             );
 
-            return sendMessage(
+            return sendMessageWithDelay(
                 sender,
                 mainMenu()
             );
@@ -247,7 +250,7 @@ async function webhook(req, res) {
             // jika pilihan tidak valid
             if (!categories[message]) {
 
-                return sendMessage(
+                return sendMessageWithDelay(
                     sender,
                     `Pilihan tidak valid.\n\n${mainMenu()}`
                 );
@@ -265,7 +268,7 @@ async function webhook(req, res) {
                 ]
             );
 
-            return sendMessage(
+            return sendMessageWithDelay(
                 sender,
                 `Anda memilih ${categories[message]}.\n\n` +
                 `Silakan kirim detail keluhan Anda.`
@@ -292,7 +295,7 @@ async function webhook(req, res) {
             // operator tidak tersedia
             if (operatorRows.length === 0) {
 
-                return sendMessage(
+                return sendMessageWithDelay(
                     sender,
                     'Operator tidak tersedia.'
                 );
@@ -337,7 +340,7 @@ async function webhook(req, res) {
             );
 
             // info ke user
-            await sendMessage(
+            await sendMessageWithDelay(
                 sender,
                 `Keluhan Anda sudah diterima.\n\n` +
                 `Nomor antrean Anda: ${queueNumber}\n\n` +

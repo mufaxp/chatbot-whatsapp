@@ -1,46 +1,89 @@
-require('dotenv').config();
-
 const axios = require('axios');
 
-async function sendMessage(target, message) {
+function delay(ms) {
+
+    return new Promise(resolve =>
+        setTimeout(resolve, ms)
+    );
+}
+
+// random delay:
+// 2000, 3000, 4000, 5000 ms
+async function randomDelay() {
+
+    const time =
+        (
+            Math.floor(
+                Math.random() * 4
+            ) + 2
+        ) * 1000;
+
+    console.log(
+        `Delay ${time} ms`
+    );
+
+    await delay(time);
+}
+
+// ======================
+// SEND MESSAGE
+// ======================
+
+async function sendMessage(
+    target,
+    message
+) {
 
     try {
 
-        console.log('====================');
-        console.log('MENGIRIM PESAN');
-        console.log('TARGET:', target);
-        console.log('MESSAGE:', message);
+        const response =
+            await axios.post(
 
-        const response = await axios.post(
-            'https://api.fonnte.com/send',
-            {
-                target: target,
-                message: message
-            },
-            {
-                headers: {
-                    Authorization: process.env.FONNTE_TOKEN
+                'https://api.fonnte.com/send',
+
+                {
+                    target,
+                    message
+                },
+
+                {
+                    headers: {
+                        Authorization:
+                            process.env.FONNTE_TOKEN
+                    }
                 }
-            }
-        );
+            );
 
-        console.log('RESPON FONNTE:');
         console.log(response.data);
 
     } catch (error) {
 
-        console.log('ERROR FONNTE');
+        console.log(
+            'ERROR SEND MESSAGE'
+        );
 
-        if (error.response) {
-            console.log(error.response.data);
-        } else {
-            console.log(error.message);
-        }
-
+        console.log(error.response?.data);
     }
+}
 
+// ======================
+// SEND MESSAGE WITH DELAY
+// ======================
+
+async function sendMessageWithDelay(
+    target,
+    message
+) {
+
+    await randomDelay();
+
+    await sendMessage(
+        target,
+        message
+    );
 }
 
 module.exports = {
-    sendMessage
+    sendMessage,
+    sendMessageWithDelay
 };
