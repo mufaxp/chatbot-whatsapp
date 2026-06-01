@@ -7,8 +7,8 @@ const {
 
 const categories = {
     '1': 'Jaringan Internet',
-    '2': 'Kendala LMS',
-    '3': 'Server Ujian'
+    '2': 'Akun siswa (tidak bisa login, lupa password, dsb)',
+    '3': 'Aplikasi ujian (SEB error, token, dsb)'
 };
 
 // ======================
@@ -20,8 +20,8 @@ function mainMenu() {
     return (
         `Selamat datang di layanan pengaduan.\n\n` +
         `1. Jaringan Internet\n` +
-        `2. Kendala LMS\n` +
-        `3. Server Ujian\n\n` +
+        `2. Akun siswa (tidak bisa login, lupa password, dsb)\n` +
+        `3. Aplikasi ujian (SEB error, token, dsb)\n\n` +
         `Silakan pilih layanan.`
     );
 }
