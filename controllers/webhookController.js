@@ -49,7 +49,7 @@ async function handleJadwal(sender, senderName, message) {
     });
 
     const pengajuan = {
-        pengaju: senderName || sender,
+        pengaju: data.nama || sender,
         nomor_wa: sender,
         penanggung_jawab: data.penanggung_jawab || data.nama || senderName || sender,
         mata_pelajaran: data.mata_pelajaran || data.mapel || '',
@@ -61,19 +61,9 @@ async function handleJadwal(sender, senderName, message) {
         lab_id: parseInt(data.lab) || 1
     };
 
-    if (!pengajuan.kegiatan || !pengajuan.tanggal || !pengajuan.jam_mulai || !pengajuan.jam_selesai) {
-        await sendMessageWithDelay(sender,
-            '❌ Format tidak lengkap.\n\n' +
-            'Contoh:\n' +
-            '#jadwal\n' +
-            'Nama: Syamiluddin, S.Pd.\n' +
-            'Kegiatan: Praktikum Sel Elektrolisis\n' +
-            'Kelas: XII-05 SC\n' +
-            'Mata Pelajaran: Biologi\n' +
-            'Tanggal: 2026-06-20\n' +
-            'Jam: 3-5\n' +
-            'Lab: 1'
-        );
+        // Validasi field wajib
+    if (!pengajuan.penanggung_jawab || !pengajuan.kegiatan || !pengajuan.tanggal || !pengajuan.jam_mulai || !pengajuan.jam_selesai) {
+        await sendMessage(sender, '❌ Data tidak lengkap. Mohon isi minimal: Nama, Kegiatan, Tanggal, Jam, Lab.\n\nContoh:\n#jadwal\nNama: Syamiluddin, S.Pd.\nMata Pelajaran: Kimia\nKegiatan: Praktikum Sel Elektrolisis\nKelas: XII-05 SC\nTanggal: 2026-06-20\nJam: 3-5\nLab: 1');
         return true;
     }
 
