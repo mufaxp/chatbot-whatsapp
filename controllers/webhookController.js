@@ -5,6 +5,8 @@ const {
     sendMessageWithDelay
 } = require('../services/whatsapp');
 
+const axios = require('axios');
+
 const categories = {
     '1': 'Jaringan Internet',
     '2': 'Akun siswa (tidak bisa login, lupa password, dsb)',
@@ -24,6 +26,79 @@ function mainMenu() {
         `3. Aplikasi ujian (SEB error, token, dsb)\n\n` +
         `Silakan pilih layanan.`
     );
+}
+
+// =============================================
+// HANDLER: #jadwal (Pengajuan Jadwal Lab)
+// =============================================
+async function handleJadwal(sender, senderName, message) {
+    const lines = message.split('\n');
+    
+    if (!lines[0].trim().toLowerCase().startsWith('#jadwal')) return false;
+
+    console.log('📩 Deteksi #jadwal dari:', senderName);
+
+    const data = {};
+    lines.forEach(line => {
+        const parts = line.split(':');
+        if (parts.length >= 2) {
+            const key = parts[0].trim().toLowerCase().replace(/ /g, '_');
+            const value = parts.slice(1).join(':').trim();
+            data[key] = value;
+        }
+    });
+
+    const pengajuan = {
+        pengaju: senderName || sender,
+        nomor_wa: sender,
+        penanggung_jawab: data.penanggung_jawab || data.nama || senderName || sender,
+        mata_pelajaran: data.mata_pelajaran || data.mapel || '',
+        kegiatan: data.kegiatan || '',
+        kelas: data.kelas || '-',
+        tanggal: data.tanggal || '',
+        jam_mulai: parseInt(data.jam?.split('-')[0]) || 0,
+        jam_selesai: parseInt(data.jam?.split('-')[1]) || 0,
+        lab_id: parseInt(data.lab) || 1
+    };
+
+    if (!pengajuan.kegiatan || !pengajuan.tanggal || !pengajuan.jam_mulai || !pengajuan.jam_selesai) {
+        await sendMessageWithDelay(sender,
+            '❌ Format tidak lengkap.\n\n' +
+            'Contoh:\n' +
+            '#jadwal\n' +
+            'Nama: Syamiluddin, S.Pd.\n' +
+            'Kegiatan: Praktikum Sel Elektrolisis\n' +
+            'Kelas: XII-05 SC\n' +
+            'Mata Pelajaran: Biologi\n' +
+            'Tanggal: 2026-06-20\n' +
+            'Jam: 3-5\n' +
+            'Lab: 1'
+        );
+        return true;
+    }
+
+    try {
+        const response = await axios.post('http://localhost:7000/api/pengajuan', pengajuan);
+
+        if (response.status === 201) {
+            await sendMessageWithDelay(sender,
+                '✅ *Pengajuan jadwal berhasil dikirim!*\n\n' +
+                'Tim laboratorium akan meninjau pengajuan Anda.\n' +
+                'Anda akan mendapat notifikasi jika sudah diproses.\n\n' +
+                '📋 *Detail:*\n' +
+                '- Kegiatan: ' + pengajuan.kegiatan + '\n' +
+                '- Tanggal: ' + pengajuan.tanggal + '\n' +
+                '- Jam: ' + pengajuan.jam_mulai + '-' + pengajuan.jam_selesai
+            );
+        } else {
+            await sendMessageWithDelay(sender, '❌ Gagal mengirim pengajuan. Silakan coba lagi.');
+        }
+    } catch (err) {
+        console.error('Error kirim pengajuan:', err.message);
+        await sendMessageWithDelay(sender, '❌ Terjadi kesalahan sistem. Silakan coba lagi nanti.');
+    }
+
+    return true;
 }
 
 // ======================
@@ -181,14 +256,18 @@ async function webhook(req, res) {
 
         const sender = req.body.sender;
         const message = req.body.message?.trim();
+        const senderName = req.body.name || sender;
 
         console.log('SENDER:', sender);
         console.log('MESSAGE:', message);
 
-        // validasi
         if (!sender || !message) {
             return;
         }
+
+        // ===== HANDLER #JADWAL =====
+        const isJadwal = await handleJadwal(sender, senderName, message);
+        if (isJadwal) return;
 
         // ======================
         // MODE OPERATOR
